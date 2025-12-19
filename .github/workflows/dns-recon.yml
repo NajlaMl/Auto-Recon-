@@ -1,0 +1,92 @@
+# .github/workflows/dns-recon.yml
+
+name: 🕵️ Automated DNS Reconnaissance
+
+# --- TRIGGERS ---
+# 1. Schedule: Runs automatically every 12 hours.
+#    Cron syntax: (minute hour day-of-month month day-of-week)
+#    '0 */12 * * *' means at minute 0 of every 12th hour.
+on:
+  schedule:
+    - cron: '0 */12 * * *'
+  # 2. Manual Trigger: Allows you to run the workflow manually from the GitHub UI.
+  #    This is very useful for testing or on-demand scans.
+  workflow_dispatch:
+
+# --- JOBS ---
+jobs:
+  dns-recon:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # --- STEPS ---
+    steps:
+      # Step 1: Check out the repository code
+      - name: 🔎 Checkout Repository
+        uses: actions/checkout@v4
+
+      # Step 2: Set up the Go environment.
+      # Subfinder, Amass, and httpx are Go-based tools. This is the easiest way to install them.
+      - name: 🐹 Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21' # Use a recent stable version of Go
+
+      # Step 3: Install the required reconnaissance tools.
+      - name: 📦 Install Recon Tools
+        run: |
+          echo "Installing subfinder..."
+          go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+          echo "Installing amass..."
+          go install -v github.com/OWASP/Amass/v3/.../amass@latest
+          echo "Installing httpx..."
+          go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
+          # Ensure the tools are in the PATH
+          echo "$HOME/go/bin" >> $GITHUB_PATH
+
+      # Step 4: Run Subdomain Enumeration
+      # We run multiple tools to get a more comprehensive list.
+      # The target domain is pulled from a GitHub Secret for security.
+      - name: 🔍 Run Subdomain Enumeration
+        env:
+          # IMPORTANT: You must create a secret named "TARGET_DOMAIN" in your repo settings.
+          TARGET_DOMAIN: ${{ secrets.TARGET_DOMAIN }}
+        run: |
+          if [ -z "$TARGET_DOMAIN" ]; then
+            echo "TARGET_DOMAIN secret is not set. Exiting."
+            exit 1
+          fi
+          echo "--- Running subfinder for $TARGET_DOMAIN ---"
+          subfinder -d "$TARGET_DOMAIN" -o subfinder.txt
+          
+          echo "--- Running amass (passive mode) for $TARGET_DOMAIN ---"
+          # -passive is faster and less noisy than active enumeration
+          amass enum -passive -d "$TARGET_DOMAIN" -o amass.txt
+          
+          echo "--- Combining and deduplicating results ---"
+          cat subfinder.txt amass.txt | sort -u > all_subdomains.txt
+          echo "Found $(wc -l < all_subdomains.txt) unique subdomains."
+
+      # Step 5: Probe for Live Subdomains
+      # This step checks which of the discovered subdomains are actually live.
+      - name: 🌐 Probe Live Subdomains
+        run: |
+          echo "--- Probing subdomains with httpx ---"
+          # -l: input list, -o: output file, -status-code: get HTTP status, -title: get page title
+          # -tech-detect: identify technologies, -silent: clean output, -retries: handle hiccups
+          httpx -l all_subdomains.txt -o live_subdomains.txt -status-code -title -tech-detect -silent -retries 2
+          echo "Found $(wc -l < live_subdomains.txt) live subdomains."
+
+      # Step 6: Upload Results as Artifacts
+      # This makes the results available for download from the workflow run page.
+      - name: 📤 Upload Results
+        uses: actions/upload-artifact@v3
+        with:
+          # The name of the artifact that will be displayed in the UI
+          name: dns-recon-results-${{ github.run_number }}
+          # A list of files to include in the artifact
+          path: |
+            all_subdomains.txt
+            live_subdomains.txt
+          # Optional: Set how long to keep the artifact for (in days)
+          retention-days: 30
