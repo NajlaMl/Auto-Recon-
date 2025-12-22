@@ -24,7 +24,7 @@ jobs:
       - name: Run DNS Recon
         run: |
           mkdir -p output
-          subfinder -d example.com -silent > output/subdomains.txt
+          subfinder -d squidsecure.ovh -silent > output/subdomains.txt
 
       - name: Upload results
         uses: actions/upload-artifact@v4
