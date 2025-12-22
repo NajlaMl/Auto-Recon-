@@ -1,33 +1,93 @@
-name: Automated DNS Recon
+# .github/workflows/test-integration.yml
 
+name: 🧪 Integration Test (Discord & Secrets)
+
+# --- TRIGGERS ---
+# This workflow is designed to be run manually from the GitHub UI.
+# It does NOT run on a schedule.
 on:
-  schedule:
-    - cron: "0 */12 * * *"
   workflow_dispatch:
 
+# --- JOBS ---
 jobs:
-  dns-recon:
+  test-discord-integration:
+    # The type of runner that the job will run on.
     runs-on: ubuntu-latest
 
+    # --- STEPS ---
     steps:
-      - name: Checkout repository
+      # Step 1: Check out the repository code.
+      - name: 🔎 Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Install Subfinder
+      # Step 2: Test reading secrets and sending a message to Discord.
+      - name: 📬 Send Test Message to Discord
+        env:
+          # IMPORTANT: You must create these secrets in your repo settings for the test to work.
+          TARGET_DOMAIN: ${{ secrets.TARGET_DOMAIN }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          sudo apt update
-          sudo apt install -y wget unzip
-          wget https://github.com/projectdiscovery/subfinder/releases/latest/download/subfinder_linux_amd64.zip
-          unzip subfinder_linux_amd64.zip
-          sudo mv subfinder /usr/local/bin/
+          echo "--- Starting Integration Test ---"
 
-      - name: Run DNS Recon
-        run: |
-          mkdir -p output
-          subfinder -d squidsecure.ovh -silent > output/subdomains.txt
+          # --- Test 1: Check if TARGET_DOMAIN secret is set ---
+          if [ -z "$TARGET_DOMAIN" ]; then
+            echo "❌ TEST FAILED: 'TARGET_DOMAIN' secret is not set."
+            echo "Please go to Settings > Secrets and variables > Actions and add the secret."
+            exit 1
+          else
+            echo "✅ TEST PASSED: 'TARGET_DOMAIN' secret found: $TARGET_DOMAIN"
+          fi
 
-      - name: Upload results
-        uses: actions/upload-artifact@v4
-        with:
-          name: dns-recon-results
-          path: output/subdomains.txt
+          # --- Test 2: Check if DISCORD_WEBHOOK_URL secret is set ---
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "❌ TEST FAILED: 'DISCORD_WEBHOOK_URL' secret is not set."
+            echo "Please go to Settings > Secrets and variables > Actions and add the secret."
+            exit 1
+          else
+            echo "✅ TEST PASSED: 'DISCORD_WEBHOOK_URL' secret found."
+          fi
+
+          # --- Test 3: Check for 'jq' command-line JSON processor ---
+          if ! command -v jq &> /dev/null; then
+              echo "❌ TEST FAILED: 'jq' command not found. Installing it..."
+              sudo apt-get update && sudo apt-get install -y jq
+          else
+              echo "✅ 'jq' command is available."
+          fi
+
+          # --- Test 4: Send the actual message to Discord ---
+          echo "--- Sending test message to Discord ---"
+          
+          # Use jq to safely create a JSON payload. This is crucial to prevent errors if secrets contain special characters.
+          PAYLOAD=$(jq -n \
+            --arg title "🧪 GitHub Actions Integration Test" \
+            --arg target "Target Domain: ${TARGET_DOMAIN}" \
+            --arg status "Status: All checks passed!" \
+            --arg url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            '{
+              "embeds": [
+                {
+                  "title": $title,
+                  "description": "This is a test message to confirm the GitHub Actions workflow can communicate with Discord.",
+                  "color": 3066993, # A nice green color for success
+                  "fields": [
+                    { "name": "🎯 Target", "value": $target, "inline": true },
+                    { "name": "✅ Status", "value": $status, "inline": true }
+                  ],
+                  "url": $url
+                }
+              ]
+            }')
+          
+          # Send the payload to Discord using curl. The '-s' flag makes curl silent, and we check the HTTP status code.
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Content-Type: application/json" -d "$PAYLOAD" "$DISCORD_WEBHOOK_URL")
+          
+          if [ "$HTTP_STATUS" -eq 204 ]; then
+            echo "✅ TEST PASSED: Message sent to Discord successfully (HTTP 204 No Content)."
+          else
+            echo "❌ TEST FAILED: Failed to send message to Discord. HTTP Status: $HTTP_STATUS"
+            echo "Please check your 'DISCORD_WEBHOOK_URL' secret for any typos."
+            exit 1
+          fi
+
+          echo "--- Integration Test Complete ---"
