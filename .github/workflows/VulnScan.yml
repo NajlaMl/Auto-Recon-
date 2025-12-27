@@ -34,7 +34,7 @@ jobs:
             echo "::error::DISCORD_WEBHOOK_URL secret is not set"
             exit 1
           fi
-          echo "DISCORD_WEBHOOK=${{ secrets.DDISCORD_WEBHOOK_URL }}" >> $GITHUB_ENV
+          echo "DISCORD_WEBHOOK=${{ secrets.DISCORD_WEBHOOK_URL }}" >> $GITHUB_ENV
 
       - name: Set Domain
         id: set_domain
