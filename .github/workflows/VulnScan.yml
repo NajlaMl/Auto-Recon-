@@ -30,11 +30,11 @@ jobs:
 
       - name: Validate Secrets
         run: |
-          if [ -z "${{ secrets.DISCORD_WEBHOOK }}" ]; then
-            echo "::error::DISCORD_WEBHOOK secret is not set"
+          if [ -z "${{ secrets.DDISCORD_WEBHOOK_URL }}" ]; then
+            echo "::error::DISCORD_WEBHOOK_URL secret is not set"
             exit 1
           fi
-          echo "DISCORD_WEBHOOK=${{ secrets.DISCORD_WEBHOOK }}" >> $GITHUB_ENV
+          echo "DISCORD_WEBHOOK=${{ secrets.DISCORD_WEBHOOK_URL }}" >> $GITHUB_ENV
 
       - name: Set Domain
         id: set_domain
