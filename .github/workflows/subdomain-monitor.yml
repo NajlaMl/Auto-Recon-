@@ -9,7 +9,7 @@ on:
       domain:
         description: 'Target domain to scan'
         required: true
-        default: 'example.com'
+        default: 'squidsecure.ovh'
 
 # Set permissions for the workflow
 permissions:
